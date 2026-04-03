@@ -3,6 +3,8 @@ const SecurityPolicy = require('cors');
 const SecurityHelmet = require('helmet');
 const DOSLimiter = require('express-rate-limit');
 const requestLogger = require('morgan');
+const SwaggerUI = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 
 const AuthPath = require('./routes/authRoutes');
 const OperatorPath = require('./routes/userRoutes');
@@ -31,6 +33,17 @@ coreApplication.use('/api/auth', AuthPath);
 coreApplication.use('/api/operators', OperatorPath); // formerly users
 coreApplication.use('/api/ledger', LedgerPath); // formerly records
 coreApplication.use('/api/metrics', MetricsPath); // formerly dashboard
+
+// -> API Documentation (Swagger UI)
+coreApplication.use('/api/docs', SwaggerUI.serve, SwaggerUI.setup(swaggerSpec, {
+    customSiteTitle: 'Zorvyn Finance API Docs',
+    customCss: '.swagger-ui .topbar { background-color: #1a1a2e; }',
+}));
+// Expose raw OpenAPI JSON spec
+coreApplication.get('/api/docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+});
 
 // -> Dead-end Request Catch
 coreApplication.use((req, res) => {
