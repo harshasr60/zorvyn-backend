@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zorvyn Backend — API Documentation</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css" />
+  <style>
+    body { margin: 0; padding: 0; background: #fafafa; }
+    .topbar { display: none !important; }
+  </style>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+<script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-standalone-preset.js"></script>
+<script>
+const spec = {
+  openapi: "3.0.3",
+  info: {
+    title: "Zorvyn Backend API",
+    version: "1.0.0",
+    description: `**Financial Orchestration & RBAC Backend Engine**
+
+A scalable backend for a financial statistics and aggregation dashboard. Enforces layered Role-Based Access Control (RBAC) with three roles: **Viewer**, **Analyst**, and **Admin**.
+
+### Authentication
+All protected routes require a Bearer token in the Authorization header:
+\`\`\`
+Authorization: Bearer <jwt_token>
+\`\`\`
+
+### Roles & Access
+| Role | Permissions |
+|------|-------------|
+| Viewer | Radar metrics only |
+| Analyst | Ledger read + Radar metrics |
+| Admin | Full access + operator management |
+`
+  },
+  servers: [
+    { url: "http://localhost:3000", description: "Local development server" }
+  ],
+  components: {
+    securitySchemes: {
+      BearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT"
+      }
+    },
+    schemas: {
+      RegisterRequest: {
+        type: "object",
+        required: ["username", "password"],
+        properties: {
+          username: { type: "string", example: "john_admin" },
+          password: { type: "string", format: "password", example: "securepass123" },
+          role: {
+            type: "string",
+            enum: ["Viewer", "Analyst", "Admin"],
+            example: "Analyst",
+            description: "Role is auto-set to Admin if cluster is empty; otherwise defaults to Viewer"
+          }
+        }
+      },
+      LoginRequest: {
+        type: "object",
+        required: ["username", "password"],
+        properties: {
+          username: { type: "string", example: "john_admin" },
+          password: { type: "string", format: "password", example: "securepass123" }
+        }
+      },
+      AuthResponse: {
+        type: "object",
+        properties: {
+          token: { type: "string", example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." },
+          operator: {
+            type: "object",
+            properties: {
+              id: { type: "string", format: "uuid" },
+              username: { type: "string" },
+              role: { type: "string", enum: ["Viewer", "Analyst", "Admin"] }
+            }
+          }
+        }
+      },
+      Operator: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid", example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+          username: { type: "string", example: "john_admin" },
+          role: { type: "string", enum: ["Viewer", "Analyst", "Admin"], example: "Admin" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      UpdateOperatorRequest: {
+        type: "object",
+        properties: {
+          role: { type: "string", enum: ["Viewer", "Analyst", "Admin"], example: "Analyst" }
+        }
+      },
+      LedgerBlock: {
+        type: "object",
+        properties: {
+          nodeUUID: { type: "string", format: "uuid", example: "b2c3d4e5-f6a7-8901-bcde-f12345678901" },
+          type: { type: "string", enum: ["Income", "Expense"], example: "Income" },
+          amount: { type: "number", format: "float", example: 1500.00 },
+          tag: { type: "string", example: "salary" },
+          description: { type: "string", example: "Monthly salary credit" },
+          date: { type: "string", format: "date", example: "2025-04-01" },
+          isVisible: { type: "boolean", example: true, description: "False if shadow-purged" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      CreateLedgerRequest: {
+        type: "object",
+        required: ["type", "amount", "date"],
+        properties: {
+          type: { type: "string", enum: ["Income", "Expense"], example: "Expense" },
+          amount: { type: "number", format: "float", example: 250.50 },
+          tag: { type: "string", example: "utilities" },
+          description: { type: "string", example: "Electricity bill for March" },
+          date: { type: "string", format: "date", example: "2025-03-31" }
+        }
+      },
+      UpdateLedgerRequest: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["Income", "Expense"] },
+          amount: { type: "number", format: "float", example: 300.00 },
+          tag: { type: "string", example: "utilities" },
+          description: { type: "string", example: "Updated electricity bill" },
+          date: { type: "string", format: "date", example: "2025-03-31" }
+        }
+      },
+      PaginatedLedger: {
+        type: "object",
+        properties: {
+          data: {
+            type: "array",
+            items: { "$ref": "#/components/schemas/LedgerBlock" }
+          },
+          total: { type: "integer", example: 120 },
+          pageSlice: { type: "integer", example: 1 },
+          chunkSize: { type: "integer", example: 10 }
+        }
+      },
+      RadarMetrics: {
+        type: "object",
+        properties: {
+          totalIncome: { type: "number", example: 45000.00 },
+          totalExpense: { type: "number", example: 18000.00 },
+          netBalance: { type: "number", example: 27000.00 },
+          segmentedHistory: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                period: { type: "string", example: "2025-03" },
+                income: { type: "number", example: 15000.00 },
+                expense: { type: "number", example: 6000.00 },
+                net: { type: "number", example: 9000.00 }
+              }
+            }
+          },
+          tagBreakdown: {
+            type: "object",
+            additionalProperties: { type: "number" },
+            example: { salary: 45000, utilities: 3000, rent: 9000 }
+          }
+        }
+      },
+      ErrorResponse: {
+        type: "object",
+        properties: {
+          message: { type: "string", example: "Unauthorized" },
+          status: { type: "integer", example: 401 }
+        }
+      }
+    }
+  },
+  security: [],
+  paths: {
+    "/api/auth/register": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Register a new operator",
+        description: "Creates a new operator node. If the cluster has no existing operators, the first registration automatically receives **Admin** role.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { "$ref": "#/components/schemas/RegisterRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Operator registered successfully",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/AuthResponse" }
+              }
+            }
+          },
+          "400": {
+            description: "Validation error",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "409": {
+            description: "Username already exists",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      post: {
+        tags: ["Authentication"],
+        summary: "Login and obtain JWT token",
+        description: "Exchange credentials for an active session manifest (JWT Token).",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Login successful — returns JWT token",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/AuthResponse" }
+              }
+            }
+          },
+          "401": {
+            description: "Invalid credentials",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/operators": {
+      get: {
+        tags: ["Operators"],
+        summary: "List all operators",
+        description: "Returns a listing of all registered operator nodes in the cluster. **Requires Admin role.**",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "List of operators",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: { "$ref": "#/components/schemas/Operator" }
+                }
+              }
+            }
+          },
+          "401": { description: "Unauthorized — missing or invalid token" },
+          "403": { description: "Forbidden — Admin role required" }
+        }
+      }
+    },
+    "/api/operators/{id}": {
+      put: {
+        tags: ["Operators"],
+        summary: "Update operator role",
+        description: "Mutate another operator's internal standing or clearance tier. **Requires Admin role.**",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+            description: "Operator UUID"
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { "$ref": "#/components/schemas/UpdateOperatorRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Operator updated",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/Operator" }
+              }
+            }
+          },
+          "400": { description: "Validation error" },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — Admin role required" },
+          "404": { description: "Operator not found" }
+        }
+      }
+    },
+    "/api/ledger": {
+      get: {
+        tags: ["Ledger"],
+        summary: "List paginated ledger blocks",
+        description: "Stream paginated ledger blocks with optional filtering. **Requires Admin or Analyst role.**",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          { name: "pageSlice", in: "query", schema: { type: "integer", default: 1 }, description: "Page number" },
+          { name: "chunkSize", in: "query", schema: { type: "integer", default: 10 }, description: "Records per page" },
+          { name: "filterType", in: "query", schema: { type: "string", enum: ["Income", "Expense"] }, description: "Filter by transaction type" },
+          { name: "filterTag", in: "query", schema: { type: "string", example: "salary" }, description: "Filter by tag label" },
+          { name: "horizonStart", in: "query", schema: { type: "string", format: "date", example: "2025-01-01" }, description: "Start of date range" },
+          { name: "horizonEnd", in: "query", schema: { type: "string", format: "date", example: "2025-12-31" }, description: "End of date range" }
+        ],
+        responses: {
+          "200": {
+            description: "Paginated ledger result",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/PaginatedLedger" }
+              }
+            }
+          },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — Analyst or Admin role required" }
+        }
+      },
+      post: {
+        tags: ["Ledger"],
+        summary: "Create a new ledger block",
+        description: "Inject a new financial block (Income or Expense) onto the chain. **Requires Admin role.**",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { "$ref": "#/components/schemas/CreateLedgerRequest" }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Ledger block created",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/LedgerBlock" }
+              }
+            }
+          },
+          "400": { description: "Validation error" },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — Admin role required" }
+        }
+      }
+    },
+    "/api/ledger/{nodeUUID}": {
+      get: {
+        tags: ["Ledger"],
+        summary: "Get a single ledger block",
+        description: "Retrieve a single financial block by its UUID. **Requires Admin or Analyst role.**",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "nodeUUID",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+            description: "Ledger block UUID"
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Ledger block details",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/LedgerBlock" }
+              }
+            }
+          },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden" },
+          "404": { description: "Block not found" }
+        }
+      },
+      put: {
+        tags: ["Ledger"],
+        summary: "Update a ledger block",
+        description: "Mutate properties of an existing financial block. **Requires Admin role.**",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "nodeUUID",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+            description: "Ledger block UUID"
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { "$ref": "#/components/schemas/UpdateLedgerRequest" }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Ledger block updated",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/LedgerBlock" }
+              }
+            }
+          },
+          "400": { description: "Validation error" },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — Admin role required" },
+          "404": { description: "Block not found" }
+        }
+      },
+      delete: {
+        tags: ["Ledger"],
+        summary: "Soft-delete (shadow-purge) a ledger block",
+        description: "Flips the visibility boolean of a ledger block to false — the record is preserved for compliance auditing, not destroyed. **Requires Admin role.**",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "nodeUUID",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+            description: "Ledger block UUID"
+          }
+        ],
+        responses: {
+          "200": { description: "Block shadow-purged successfully" },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — Admin role required" },
+          "404": { description: "Block not found" }
+        }
+      }
+    },
+    "/api/metrics/radar": {
+      get: {
+        tags: ["Radar Metrics"],
+        summary: "Get aggregated financial metrics",
+        description: "Extracts heavy aggregation data representing gross vitals and segmented footprint history. **Requires Viewer, Analyst, or Admin role.**",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "timeStart",
+            in: "query",
+            schema: { type: "string", format: "date", example: "2025-01-01" },
+            description: "Start of aggregation period"
+          },
+          {
+            name: "timeEnd",
+            in: "query",
+            schema: { type: "string", format: "date", example: "2025-12-31" },
+            description: "End of aggregation period"
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Aggregated radar metrics",
+            content: {
+              "application/json": {
+                schema: { "$ref": "#/components/schemas/RadarMetrics" }
+              }
+            }
+          },
+          "401": { description: "Unauthorized" },
+          "403": { description: "Forbidden — at least Viewer role required" }
+        }
+      }
+    }
+  },
+  tags: [
+    { name: "Authentication", description: "Register and login to receive JWT tokens" },
+    { name: "Operators", description: "Manage operator nodes and their roles (Admin only)" },
+    { name: "Ledger", description: "Create, read, update, and soft-delete financial transactions" },
+    { name: "Radar Metrics", description: "Aggregated financial intelligence and analytics" }
+  ]
+};
+
+window.onload = function () {
+  SwaggerUIBundle({
+    spec: spec,
+    dom_id: "#swagger-ui",
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+    layout: "StandaloneLayout",
+    deepLinking: true,
+    defaultModelsExpandDepth: 1,
+    defaultModelExpandDepth: 2,
+    displayRequestDuration: true,
+    tryItOutEnabled: true
+  });
+};
+</script>
+</body>
+</html>
